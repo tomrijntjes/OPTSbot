@@ -1,4 +1,7 @@
-FROM jfloff/alpine-python:2.7
+FROM ubuntu:16.04
+
+RUN apt-get update
+RUN apt-get install -y build-essential libssl-dev libffi-dev python-dev python-pip
 
 ADD . /
 

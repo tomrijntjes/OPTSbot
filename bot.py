@@ -17,6 +17,8 @@ bot.
 """
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+
+from sheet import SHEET
 import logging
 import os
 
@@ -30,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
 def start(bot, update):
-    update.message.reply_text('Hi!')
+    update.message.reply_text('Hi! This is the official Objective Partners table soccer league reporter bot. Write "/leaderboard" to get the latest ranking for the current season!')
 
 
 def help(bot, update):
@@ -40,9 +42,20 @@ def help(bot, update):
 def echo(bot, update):
     update.message.reply_text(update.message.text)
 
+def ranking(bot,update):
+    worksheet = SHEET.worksheet("Top TablePeriod")
+    ranking = [contender for contender in worksheet.col_values(3) if contender != '']
+    ranking = ["{0}.{1}".format(rank+1,contender) for rank,contender in enumerate(ranking)]
+
+
+    update.message.reply_text("\n".join(ranking))
+
 
 def error(bot, update, error):
     logger.warn('Update "%s" caused error "%s"' % (update, error))
+
+
+
 
 
 def main():
@@ -55,6 +68,7 @@ def main():
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
+    dp.add_handler(CommandHandler("leaderboard", ranking))
 
     # on noncommand i.e message - echo the message on Telegram
     dp.add_handler(MessageHandler(Filters.text, echo))
