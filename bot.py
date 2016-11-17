@@ -18,7 +18,7 @@ bot.
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
-from sheet import SHEET
+from sheet import GoogleSheet
 import logging
 import os
 
@@ -43,19 +43,11 @@ def echo(bot, update):
     update.message.reply_text(update.message.text)
 
 def ranking(bot,update):
-    worksheet = SHEET.worksheet("Top TablePeriod")
-    ranking = [contender for contender in worksheet.col_values(3) if contender != '']
-    ranking = ["{0}.{1}".format(rank+1,contender) for rank,contender in enumerate(ranking)]
-
-
-    update.message.reply_text("\n".join(ranking))
-
-
+    with GoogleSheet(os.environ["SHEET_URL"]) as s:
+        update.message.reply_text(s.ranking())
+ 
 def error(bot, update, error):
     logger.warn('Update "%s" caused error "%s"' % (update, error))
-
-
-
 
 
 def main():
