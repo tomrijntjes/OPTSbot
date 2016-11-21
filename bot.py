@@ -16,8 +16,9 @@ Press Ctrl-C on the command line or send a signal to the process to stop the
 bot.
 """
 
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from telegram import (ReplyKeyboardMarkup, ReplyKeyboardHide)
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters,RegexHandler,ConversationHandler
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardHide
+
 
 from sheet import GoogleSheet
 import logging
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 s = GoogleSheet(os.environ["SHEET_URL"])
 
+POSITION,TEAM_MATE,OPPONENT_ONE = range(3)
 
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
@@ -61,6 +63,42 @@ def subscribe(bot,update):
 def error(bot, update, error):
     logger.warn('Update "%s" caused error "%s"' % (update, error))
 
+#conversation handler for registering a game
+#position, team mate, opponent one, position, opponent two, color, score
+
+
+
+def result(bot,update):
+    reply_keyboard = [['Front','Back']]
+    update.message.reply_text(
+        "Let's register a game :)\n"
+        "Send /cancel to stop talking to me.\n\n"
+        "Which position did you play?",
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+
+    return TEAM_MATE
+
+def team_mate(bot, update):
+    reply_keyboard = list(chunks(filter(s.players,lambda p: p!=user.first_name),3))
+    user = update.message.from_user
+    logger.info("%s played in the %s" % (user.first_name, update.message.text))
+    update.message.reply_text('Okay! Who was on your team?',
+                              reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+
+    return OPPONENT_ONE
+
+def opponent_one(bot,update):
+    return ConversationHandler.END
+
+def cancel(bot, update):
+    user = update.message.from_user
+    logger.info("User %s canceled the conversation." % user.first_name)
+    update.message.reply_text('Bye! I hope we can talk again some day.',
+                              reply_markup=ReplyKeyboardHide())
+
+    return ConversationHandler.END
+
+
 
 def main():
     # Create the EventHandler and pass it your bot's token.
@@ -74,6 +112,22 @@ def main():
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("leaderboard", ranking))
     dp.add_handler(CommandHandler("subscribe", subscribe))
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('result', result)],
+
+        states={
+            POSITION: [MessageHandler(Filters.text, position)],
+
+            TEAM_MATE: [MessageHandler(Filters.text, team_mate)],
+
+            OPPONENT_ONE: [MessageHandler(Filters.text, oppont_one)],
+
+        },
+
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+
+    dp.add_handler(conv_handler)
 
     # on noncommand i.e message - echo the message on Telegram
     dp.add_handler(MessageHandler(Filters.text, echo))
