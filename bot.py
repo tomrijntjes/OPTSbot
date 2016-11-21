@@ -17,6 +17,7 @@ bot.
 """
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import (ReplyKeyboardMarkup, ReplyKeyboardHide)
 
 from sheet import GoogleSheet
 import logging
@@ -27,6 +28,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
+
+s = GoogleSheet(os.environ["SHEET_URL"])
 
 
 # Define a few command handlers. These usually take the two arguments bot and
@@ -43,9 +46,18 @@ def echo(bot, update):
     update.message.reply_text(update.message.text)
 
 def ranking(bot,update):
-    with GoogleSheet(os.environ["SHEET_URL"]) as s:
-        update.message.reply_text(s.ranking())
- 
+    s.update()
+    update.message.reply_text(s.get_ranking())
+    
+def chunks(l, n):
+    """Yield successive n-sized chunks from l."""
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+        
+def subscribe(bot,update):
+    reply_keyboard = list(chunks(s.players,3))
+    update.message.reply_text(update.message.text, reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+    
 def error(bot, update, error):
     logger.warn('Update "%s" caused error "%s"' % (update, error))
 
@@ -61,12 +73,16 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("leaderboard", ranking))
+    dp.add_handler(CommandHandler("subscribe", subscribe))
 
     # on noncommand i.e message - echo the message on Telegram
     dp.add_handler(MessageHandler(Filters.text, echo))
 
     # log all errors
     dp.add_error_handler(error)
+    
+    #get data
+    s.update()
 
     # Start the Bot
     updater.start_polling()
