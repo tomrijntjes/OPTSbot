@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 
 s = GoogleSheet(os.environ["SHEET_URL"])
 
-POSITION,TEAM_MATE,OPPONENT_ONE = range(3)
+POSITION,TEAM_MATE,SCORE,SCORE_CHECK,DEFENDING_OPPONENT,LOSING_SCORE,OFFENDING_OPPONENT=range(7)
+
 
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
@@ -66,10 +67,22 @@ def error(bot, update, error):
 #conversation handler for registering a game
 #position, team mate, opponent one, position, opponent two, color, score
 
+game = {"blue":{
+            "back":"Tom",
+            "front":"Ivo",
+            "score":10
+            },
+        "red":{
+            "back":"Xia",
+            "front":"Matthijs",
+            "score":7
+        }
+    }
 
 
-def result(bot,update):
-    reply_keyboard = [['Front','Back']]
+
+def position(bot,update):
+    reply_keyboard = [['Red Defense','Red Offense'],['Blue Defense','Blue Offense']]
     update.message.reply_text(
         "Let's register a game :)\n"
         "Send /cancel to stop talking to me.\n\n"
@@ -78,17 +91,123 @@ def result(bot,update):
 
     return TEAM_MATE
 
-def team_mate(bot, update):
-    reply_keyboard = list(chunks(filter(s.players,lambda p: p!=user.first_name),3))
+def team_mate(bot, update,user_data):
     user = update.message.from_user
-    logger.info("%s played in the %s" % (user.first_name, update.message.text))
+    text = update.message.text
+    if "blue" in text.lower():
+        if "offense" in text.lower():
+            user_data["blue"]={"front":user.first_name}
+        elif "defense" in text.lower():
+            user_data["blue"]={"back":user.first_name}
+    elif "red" in text.lower():
+        if "offense" in text.lower():
+            user_data["red"]={"front":user.first_name}
+        elif "defense" in text.lower():
+            user_data["red"]={"back":user.first_name}
+    else:
+        update_message.reply_text('Sorry, that I did not understand. Give it another go!')
+        return TEAM_MATE
+
+    reply_keyboard = list(chunks([player for player in s.players if player!=user.first_name],3))
     update.message.reply_text('Okay! Who was on your team?',
                               reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
 
-    return OPPONENT_ONE
+    return SCORE
 
-def opponent_one(bot,update):
+
+def score(bot,update,user_data):
+    text = update.message.text
+    if "blue" in user_data:
+        if "back" in user_data["blue"]:
+            user_data["blue"]["front"]=text
+        else:
+            user_data["blue"]["back"]=text
+    elif "red" in user_data:
+        if "back" in user_data["red"]:
+            user_data["red"]["front"]=text
+        else:
+            user_data["red"]["back"]=text
+    update.message.reply_text('How many goals did your team score?')
+
+    return SCORE_CHECK
+
+def score_check(bot,update,user_data):
+    text = update.message.text
+    try:
+        score = int(text)
+    except ValueError:
+        update.message.reply_text("Are you sure that was the score? Try Again please :)")
+        return SCORE_CHECK
+    if score < 0 or score > 10:
+        update.message.reply_text("Are you sure that was the score? Try Again please :)")
+        return SCORE_CHECK
+
+    if "blue" in user_data:
+        user_data["blue"]["score"]=score
+        other_players = [user_data["blue"]["front"],user_data["blue"]["back"]]
+    elif "red" in user_data:
+        user_data["red"]["score"]=score
+        other_players = [user_data["red"]["front"],user_data["red"]["back"]]
+    reply_keyboard = list(chunks([player for player in s.players if player not in other_players],3))
+
+    if score == 10:
+        update.message.reply_text("Nice, congrats :D How often did the losing team break through?")
+        return LOSING_SCORE
+    else:
+        if "blue" in user_data:
+            user_data["red"]={"score":10}
+        else:
+            user_data["blue"]={"score":10}
+        update.message.reply_text("Better luck next time. Who was the defending opponent?",reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+        return DEFENDING_OPPONENT
+
+def losing_score(bot,update,user_data):
+    text = update.message.text
+    try:
+        score = int(text)
+    except ValueError:
+        update.message.reply_text("Are you sure that was the score? Try Again please :)")
+        return LOSING_SCORE
+    if score < 0 or score > 9:
+        update.message.reply_text("Are you sure that was the score? Try Again please :)")
+        return LOSING_SCORE
+    if "blue" in user_data:
+        user_data["red"]={"score":score}
+        reply_keyboard = list(chunks([player for player in s.players if player!=user_data["blue"]["front"] or player!=user_data["blue"]["back"]],3))
+    else:
+        user_data["blue"]={"score":score}
+        reply_keyboard = list(chunks([player for player in s.players if player!=user_data["red"]["front"] or player!=user_data["red"]["back"]],3))
+    update.message.reply_text("That will teach them. Who was the defending player on the opposing team?",reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+    return DEFENDING_OPPONENT
+
+def defending_opponent(bot,update,user_data):
+    text = update.message.text
+    if update.message.from_user.first_name in user_data["blue"]:
+        user_data["red"]["back"]=text
+        other_players = [text,user_data["blue"]["back"],user_data["blue"]["front"]]
+    else:
+        user_data["blue"]["back"]=text
+        other_players = [text,user_data["red"]["back"],user_data["red"]["front"]]
+
+    reply_keyboard = list(chunks([player for player in s.players if player not in other_players],3))
+    update.message.reply_text("Who was the attacking player on the opposing team?",reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+    
+    return OFFENDING_OPPONENT
+
+def offending_opponent(bot,update,user_data):
+    text = update.message.text
+    if update.message.from_user.first_name in user_data["blue"]:
+        user_data["red"]["front"]=text
+    else:
+        user_data["blue"]["front"]=text
+    logging.info(user_data)
+    if user_data["blue"]["score"]==10:
+        winner,loser = "blue","red"  
+    else:
+        winner,loser = "red","blue"
+    update.message.reply_text("{0} (o) and {1} (d) defeated {2} (o) and {3} with 10 to {4}.\n\nIs this information correct?".format(user_data[winner]["front"],user_data[winner]["back"],user_data[loser]["front"],user_data[loser]["back"],user_data[loser]["score"]))
     return ConversationHandler.END
+
 
 def cancel(bot, update):
     user = update.message.from_user
@@ -113,14 +232,22 @@ def main():
     dp.add_handler(CommandHandler("leaderboard", ranking))
     dp.add_handler(CommandHandler("subscribe", subscribe))
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('result', result)],
+        entry_points=[CommandHandler('game', position)],
 
         states={
-            POSITION: [MessageHandler(Filters.text, position)],
+            POSITION: [MessageHandler(Filters.text, position,pass_user_data=True)],
 
-            TEAM_MATE: [MessageHandler(Filters.text, team_mate)],
+            TEAM_MATE: [MessageHandler(Filters.text, team_mate,pass_user_data=True)],
 
-            OPPONENT_ONE: [MessageHandler(Filters.text, oppont_one)],
+            SCORE: [MessageHandler(Filters.text, score,pass_user_data=True)],
+
+            SCORE_CHECK: [MessageHandler(Filters.text, score_check,pass_user_data=True)],
+
+            DEFENDING_OPPONENT: [MessageHandler(Filters.text, defending_opponent,pass_user_data=True)],
+
+            LOSING_SCORE: [MessageHandler(Filters.text, losing_score,pass_user_data=True)],
+
+            OFFENDING_OPPONENT: [MessageHandler(Filters.text, offending_opponent,pass_user_data=True)],
 
         },
 
